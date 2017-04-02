@@ -140,7 +140,7 @@ elif sys.argv[1] == 'dumpdata':
 	progress = 0
 	print('Dumping ' + sys.argv[2] + ' measurements to \'' + sys.argv[3] + ('\' (don\'t let disto go to sleep!)...' if to_read > 150 else '\'...'))
 	with open(sys.argv[3], 'w') as df:
-		df.write('hot,type,dist,heading,clino,roll,x,y,z\n')
+		df.write('unread,type,dist,heading,clino,roll,x,y,z\n')
 
 		if sys.argv[2] == 'all':
 			addrs = list(range(dev_write_ptr, 0x8000, 8)) + list(range(0, dev_write_ptr, 8))
