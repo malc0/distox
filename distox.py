@@ -49,27 +49,37 @@ def send_command(s, data):
 	if s.send(bytes([data])) != 1:
 		raise CommError('Send command of 0x{:x} failed'.format(data))
 
-def df_append(df, d):
-	hot = 1 * bool(d[0] & 0x80)
+def df_append(df, d, hot, ls_roll):
+	hot *= 1
 	typ = d[0] & 0x3f
 	if typ == 0:
 		pass
 	elif typ == 1:
 		dist = (int.from_bytes(d[1:3], 'little') + 65536 * bool(d[0] & 0x40)) / 1000
+		if dist > 100000:
+			dist = dist * 10 - 900000
 		heading = int.from_bytes(d[3:5], 'little') / 65536 * 360
 		clino = int.from_bytes(d[5:7], 'little', signed = True) / 65536 * 360
-		roll = d[7] / 256 * 360
+		roll = int.from_bytes((d[7], ls_roll), 'big', signed = True) / 65536 * 360
 		df.write('{},LEG,{},{},{},{}\n'.format(hot, dist, heading, clino, roll))
 	elif typ == 2:
 		Gx = int.from_bytes(d[1:3], 'little', signed = True)
 		Gy = int.from_bytes(d[3:5], 'little', signed = True)
 		Gz = int.from_bytes(d[5:7], 'little', signed = True)
-		df.write('{},ACC,,,,,{},{},{}\n'.format(hot, Gx, Gy, Gz))
+		cal_idx = d[7]
+		df.write('{},ACC,,,,,{},{},{},{}\n'.format(hot, Gx, Gy, Gz, cal_idx))
 	elif typ == 3:
 		Mx = int.from_bytes(d[1:3], 'little', signed = True)
 		My = int.from_bytes(d[3:5], 'little', signed = True)
 		Mz = int.from_bytes(d[5:7], 'little', signed = True)
-		df.write('{},MAG,,,,,{},{},{}\n'.format(hot, Mx, My, Mz))
+		cal_idx = d[7]
+		df.write('{},MAG,,,,,{},{},{},{}\n'.format(hot, Mx, My, Mz, cal_idx))
+	elif typ == 4:
+		rev = 1 * bool(d[0] & 0x40)
+		absG = int.from_bytes(d[1:3], 'little')
+		absM = int.from_bytes(d[3:5], 'little')
+		dip = int.from_bytes(d[5:7], 'little', signed = True)
+		df.write('{},VEC,,,,,,,,,{},{},{},{}\n'.format(hot, rev, absG, absM, dip))
 	else:
 		raise RuntimeError('Unknown packet type', typ)
 
@@ -142,27 +152,41 @@ elif sys.argv[1] == 'loadcal':
 	print('... done.')
 elif sys.argv[1] == 'dumpdata':
 	if len(sys.argv) < 4:
-		raise RuntimeError('Specify how many records (note one calibration measurement is *two* records), or \'all\'; and output CSV filename; after \'dumpdata\'')
+		raise RuntimeError('Specify how many records' + (' (note one calibration measurement is *two* records)' if model == 1 else '') + ', or \'all\'; and output CSV filename; after \'dumpdata\'')
 
-	to_read = 4096 if sys.argv[2] == 'all' else int(sys.argv[2])
-	dev_write_ptr = int.from_bytes(mem_read(s, 0xc020)[0:2], 'little')	# FIXME: this doesn't work on X310
+	to_read = (4096 if model == 1 else 1064) if sys.argv[2] == 'all' else int(sys.argv[2])
+	dev_write_ptr = int.from_bytes(mem_read(s, 0xc020 if model == 1 else 0xe008)[0:2], 'little')
 
 	progress = 0
-	print('Dumping ' + sys.argv[2] + ' measurements to \'' + sys.argv[3] + ('\' (don\'t let disto go to sleep!)...' if to_read > 150 else '\'...'))
+	print('Dumping ' + sys.argv[2] + ' measurements to \'' + sys.argv[3] + ('\' (don\'t let disto go to sleep!)...' if to_read > 150 and model == 1 else '\'...'))
 	with open(sys.argv[3], 'w') as df:
-		df.write('unread,type,dist,heading,clino,roll,x,y,z\n')
+		df.write('unread,type,dist,heading,clino,roll,x,y,z,cal_idx,rev,ACC,MAG,dip\n')
 
-		read_ptr = dev_write_ptr - 8 * to_read
-		if read_ptr < 0:
-			addrs = list(range(read_ptr + 0x8000, 0x8000, 8)) + list(range(0, dev_write_ptr, 8))
+		if model == 1:
+			read_ptr = dev_write_ptr - 8 * to_read
+			if read_ptr < 0:
+				addrs = list(range(read_ptr + 0x8000, 0x8000, 8)) + list(range(0, dev_write_ptr, 8))
+			else:
+				addrs = list(range(read_ptr, dev_write_ptr, 8))
 		else:
-			addrs = list(range(read_ptr, dev_write_ptr, 8))
+			read_idx = dev_write_ptr - to_read
+			if read_idx < 0:
+				addrs = [ int(i/56) * 1024 + i%56 * 18 for i in list(range(read_idx + 1064, 1064)) + list(range(dev_write_ptr)) ]
+			else:
+				addrs = [ int(i/56) * 1024 + i%56 * 18 for i in range(read_idx, dev_write_ptr) ]
 
 		for a in addrs:
 			data = mem_read(s, a)
 			if data[0] != 0 and data[0] != 0xff:
 				data += mem_read(s, a + 4)
-				df_append(df, data)
+				if model == 1:
+					df_append(df, data, bool(data[0] & 0x80), 0)
+				else:
+					data += mem_read(s, a + 8)
+					data += mem_read(s, a + 12)
+					data += mem_read(s, a + 16)
+					df_append(df, data, data[16] & 1, data[15])
+					df_append(df, data[8:16], data[17] & 1, 0)
 			progress += 1
 			if not progress % 128:
 				print(str(progress * 100 / to_read) + '%')
