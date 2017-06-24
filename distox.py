@@ -49,6 +49,11 @@ def send_command(s, data):
 	if s.send(bytes([data])) != 1:
 		raise CommError('Send command of 0x{:x} failed'.format(data))
 
+def segment_to_addr(i, model):
+	if model == 1:
+		return i * 8
+	return int(i / 56) * 1024 + i % 56 * 18
+
 def df_append(df, d, hot, ls_roll):
 	hot *= 1
 	typ = d[0] & 0x3f
@@ -154,26 +159,24 @@ elif sys.argv[1] == 'dumpdata':
 	if len(sys.argv) < 4:
 		raise RuntimeError('Specify how many records' + (' (note one calibration measurement is *two* records)' if model == 1 else '') + ', or \'all\'; and output CSV filename; after \'dumpdata\'')
 
-	to_read = (4096 if model == 1 else 1064) if sys.argv[2] == 'all' else int(sys.argv[2])
-	dev_write_ptr = int.from_bytes(mem_read(s, 0xc020 if model == 1 else 0xe008)[0:2], 'little')
+	if model == 1:
+		max_segments = 4096
+		dev_write_idx = int.from_bytes(mem_read(s, 0xc020)[0:2], 'little') / 8
+	else:
+		max_segments = 1064
+		dev_write_idx = int.from_bytes(mem_read(s, 0xe008)[0:2], 'little')
+	to_read = max_segments if sys.argv[2] == 'all' else int(sys.argv[2])
 
 	progress = 0
 	print('Dumping ' + sys.argv[2] + ' measurements to \'' + sys.argv[3] + ('\' (don\'t let disto go to sleep!)...' if to_read > 150 and model == 1 else '\'...'))
 	with open(sys.argv[3], 'w') as df:
 		df.write('unread,type,dist,heading,clino,roll,x,y,z,cal_idx,rev,ACC,MAG,dip\n')
 
-		if model == 1:
-			read_ptr = dev_write_ptr - 8 * to_read
-			if read_ptr < 0:
-				addrs = list(range(read_ptr + 0x8000, 0x8000, 8)) + list(range(0, dev_write_ptr, 8))
-			else:
-				addrs = list(range(read_ptr, dev_write_ptr, 8))
+		read_idx = dev_write_idx - to_read
+		if read_idx < 0:
+			addrs = [ segment_to_addr(i, model) for i in list(range(read_idx + max_segments, max_segments)) + list(range(dev_write_idx)) ]
 		else:
-			read_idx = dev_write_ptr - to_read
-			if read_idx < 0:
-				addrs = [ int(i/56) * 1024 + i%56 * 18 for i in list(range(read_idx + 1064, 1064)) + list(range(dev_write_ptr)) ]
-			else:
-				addrs = [ int(i/56) * 1024 + i%56 * 18 for i in range(read_idx, dev_write_ptr) ]
+			addrs = [ segment_to_addr(i, model) for i in range(read_idx, dev_write_idx) ]
 
 		for a in addrs:
 			data = mem_read(s, a)
