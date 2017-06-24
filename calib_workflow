@@ -1,0 +1,16 @@
+$ python3 distox.py toggleCAL
+
+<do calibration shots>
+
+$ python3 distox.py toggleCAL
+(optional, to back up existing calibration)
+	$ python3 distox.py dumpcal old_calibration.bin
+$ python3 distox.py dumpdata <number of records> calibdata.csv
+	If you took exactly 56 calibration shots (and nothing since), replace <number of records> with 56 for a DistoX2 and 112 for the original DistoX.  Use a larger number if in doubt.
+(optional, to cull unwanted calibration shots from downloaded data)
+	$ $EDITOR calibdata.csv
+$ python3 distocsv2calib.py calibdata.csv > calibdata.tlx
+$ tlx_calib calibdata.tlx new_calibration
+$ python3 distox.py loadcal new_calibration
+(optional, if the new calibration is pants)
+	$ python3 distox.py loadcal old_calibration.bin
