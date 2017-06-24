@@ -152,20 +152,15 @@ elif sys.argv[1] == 'dumpdata':
 	with open(sys.argv[3], 'w') as df:
 		df.write('unread,type,dist,heading,clino,roll,x,y,z\n')
 
-		if sys.argv[2] == 'all':
-			addrs = list(range(dev_write_ptr, 0x8000, 8)) + list(range(0, dev_write_ptr, 8))
+		read_ptr = dev_write_ptr - 8 * to_read
+		if read_ptr < 0:
+			addrs = list(range(read_ptr + 0x8000, 0x8000, 8)) + list(range(0, dev_write_ptr, 8))
 		else:
-			read_ptr = dev_write_ptr - 8 * to_read
-			if read_ptr < 0:
-				addrs = list(range(read_ptr + 0x8000, 0x8000, 8)) + list(range(0, dev_write_ptr, 8))
-			else:
-				addrs = list(range(read_ptr, dev_write_ptr, 8))
+			addrs = list(range(read_ptr, dev_write_ptr, 8))
 
 		for a in addrs:
 			data = mem_read(s, a)
 			if data[0] != 0 and data[0] != 0xff:
-				#df.write(data)
-				#df.write(mem_read(s, a + 4))
 				data += mem_read(s, a + 4)
 				df_append(df, data)
 			progress += 1
