@@ -40,6 +40,11 @@ def mem_write(s, addr, data):
 			etype = e
 	raise CommError('Memory write of 0x{:x} failed during '.format(addr) + etype.args[0])
 
+def read_cal_mode(s, model):
+	if model == 1:
+		return bool(mem_read(s, 0x8000)[0] & 8)
+	return bool(mem_read(s, 0xc044)[0] & 32)
+
 def send_command(s, data):
 	if s.send(bytes([data])) != 1:
 		raise CommError('Send command of 0x{:x} failed'.format(data))
@@ -74,18 +79,24 @@ devs = bt.discover_devices(lookup_names = True)
 
 useaddr = ''
 for addr, name in devs:
-	if name != 'DistoX':
+	if name == 'DistoX':
+		model = 1	# DistoX (Leica DISTO A3)
+	elif name.startswith('DistoX-'):
+		model = 2	# DistoX2 (Leica DISTO X310)
+	else:
 		continue
 	print('Found ' + addr + '.')
 	if not useaddr:
 		useaddr = addr
+		usemodel = model
 if useaddr:
 	print('\nUsing ' + useaddr + '...')
 	addr = useaddr
+	model = usemodel
 else:
 	raise RuntimeError('No DistoX found.')
 
-svcs = bt.find_service(name = 'COM1', address = addr)
+svcs = bt.find_service(name = 'COM1' if model == 1 else 'Serial', address = addr)
 
 if not svcs:
 	raise RuntimeError('Expected serial service not found on DistoX!?')
@@ -99,21 +110,20 @@ if len(sys.argv) < 2:
 	raise RuntimeError('No action (toggleCAL/dumpcal/loadcal/dumpdata) specified, disconnecting.')
 
 if sys.argv[1] == 'toggleCAL':
-	cal_mode = bool(mem_read(s, 0x8000)[0] & 8)
+	cal_mode = read_cal_mode(s, model)
 	print('CAL mode originally ' + ('on...' if cal_mode else 'off...'))
 
 	send_command(s, 0x31 - cal_mode)
 	time.sleep(.5)	# .1 is too short!
 
-	cal_mode = bool(mem_read(s, 0x8000)[0] & 8)
-	print('CAL mode now ' + ('on.' if cal_mode else 'off.'))
+	print('CAL mode now ' + ('on.' if read_cal_mode(s, model) else 'off.'))
 elif sys.argv[1] == 'dumpcal':
 	if len(sys.argv) < 3:
 		raise RuntimeError('Specify output filename after \'dumpcal\'')
 
 	print('Saving device calibration to \'' + sys.argv[2] + '\'...')
 	with open(sys.argv[2], 'wb') as cf:
-		for a in range(0x8010, 0x8040, 4):
+		for a in range(0x8010, 0x8040, 4):	# FIXME: nonlin coeffs...
 			cf.write(mem_read(s, a))
 	print('... done.')
 elif sys.argv[1] == 'loadcal':
@@ -127,7 +137,7 @@ elif sys.argv[1] == 'loadcal':
 	if cal[0:2] == b'0x':	# output from tlx_calib
 		cal = bytes([int(i, 16) for i in str(cal[0:244], 'utf-8').split()])
 
-	for o in range(0, 0x30, 4):
+	for o in range(0, 0x30, 4):	# FIXME: nonlin coeffs...
 		mem_write(s, 0x8010 + o, cal[o:o + 4])
 	print('... done.')
 elif sys.argv[1] == 'dumpdata':
@@ -135,7 +145,7 @@ elif sys.argv[1] == 'dumpdata':
 		raise RuntimeError('Specify how many records (note one calibration measurement is *two* records), or \'all\'; and output CSV filename; after \'dumpdata\'')
 
 	to_read = 4096 if sys.argv[2] == 'all' else int(sys.argv[2])
-	dev_write_ptr = int.from_bytes(mem_read(s, 0xc020)[0:2], 'little')
+	dev_write_ptr = int.from_bytes(mem_read(s, 0xc020)[0:2], 'little')	# FIXME: this doesn't work on X310
 
 	progress = 0
 	print('Dumping ' + sys.argv[2] + ' measurements to \'' + sys.argv[3] + ('\' (don\'t let disto go to sleep!)...' if to_read > 150 else '\'...'))
