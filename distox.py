@@ -108,7 +108,7 @@ for addr, name in devs:
 		model = 2	# DistoX2 (Leica DISTO X310)
 	else:
 		continue
-	print('Found ' + addr + '.')
+	print('Found ' + addr + (', an original DistoX.' if model == 1 else ', a DistoX2.'))
 	if not useaddr:
 		useaddr = addr
 		usemodel = model
