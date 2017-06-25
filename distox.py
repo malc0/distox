@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import bluetooth as bt
+import os
 import sys
 import time
 
@@ -88,9 +89,16 @@ def df_append(df, d, hot, ls_roll):
 	else:
 		raise RuntimeError('Unknown packet type', typ)
 
-print('Discovering devices...')
+if 'DX_ADDR' in os.environ:
+	addr = os.environ['DX_ADDR']
+	name = bt.lookup_name(addr)
+	if not name:
+		raise RuntimeError('No DistoX found at ' + addr + ' (specified in DX_ADDR environment variable).')
+	devs = [(addr, name)]
+else:
+	print('Discovering devices... (discovery can be skipped by setting the DX_ADDR environment variable)')
 
-devs = bt.discover_devices(lookup_names = True)
+	devs = bt.discover_devices(lookup_names = True)
 
 useaddr = ''
 for addr, name in devs:
