@@ -121,6 +121,11 @@ s.connect((addr, svcs[0]['port']))
 
 print('... connected.\n')
 
+fwv = mem_read(s, 0xe000)
+fw_ver = fwv[0] * 1000 + fwv[1]
+
+print('Firmware version ' + str(int(fw_ver / 1000)) + '.' + str(fw_ver % 1000) + '.\n')
+
 if len(sys.argv) < 2:
 	raise RuntimeError('No action (toggleCAL/dumpcal/loadcal/dumpdata) specified, disconnecting.')
 
@@ -138,7 +143,7 @@ elif sys.argv[1] == 'dumpcal':
 
 	print('Saving device calibration to \'' + sys.argv[2] + '\'...')
 	with open(sys.argv[2], 'wb') as cf:
-		for a in range(0x8010, 0x8040, 4):	# FIXME: nonlin coeffs...
+		for a in range(0x8010, 0x8044, 4):
 			cf.write(mem_read(s, a))
 	print('... done.')
 elif sys.argv[1] == 'loadcal':
@@ -150,9 +155,19 @@ elif sys.argv[1] == 'loadcal':
 		cal = cf.read()
 	
 	if cal[0:2] == b'0x':	# output from tlx_calib
-		cal = bytes([int(i, 16) for i in str(cal[0:244], 'utf-8').split()])
+		if cal[246:248] == b'0x':	# tlx_calib-alike, but with non-linear coefficients...
+			cal = bytes([int(i, 16) for i in str(cal[0:260], 'utf-8').split()])
+		else:
+			cal = bytes([int(i, 16) for i in str(cal[0:244], 'utf-8').split()])
 
-	for o in range(0, 0x30, 4):	# FIXME: nonlin coeffs...
+	cal = cal + b'\xff' * (-len(cal) % 4)	# pad with 0xff to 32 bit alignment
+	if len(cal) > 48:	# non-linear case
+		cal = cal[:52]	# guard against mad input
+		if cal[48:] == b'\xff\xff\xff\xff':	# actually, linear variant
+			cal = cal[:48]	# save flash wear
+		elif model == 1 or fw_ver < 2003:
+			raise RuntimeError('Writing extended (non-linear) calibration to this DistoX will not work (firmware too old): calibration unchanged')
+	for o in range(0, len(cal), 4):
 		mem_write(s, 0x8010 + o, cal[o:o + 4])
 	print('... done.')
 elif sys.argv[1] == 'dumpdata':
