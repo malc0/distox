@@ -193,6 +193,8 @@ elif sys.argv[1] == 'dumpdata':
 		max_segments = 1064
 		dev_write_idx = int.from_bytes(mem_read(s, 0xe008)[0:2], 'little')
 	to_read = max_segments if sys.argv[2] == 'all' else int(sys.argv[2])
+	if int(sys.argv[2]) > max_segments:
+		raise RuntimeError(sys.argv[2] + ' is more than the maximum possible (' + str(max_segments) + ').')
 
 	progress = 0
 	print('Dumping ' + str(to_read) + ' most-recent records to \'' + sys.argv[3] + ('\' (don\'t let disto go to sleep!)...' if to_read > 150 and model == 1 else '\'...'))
