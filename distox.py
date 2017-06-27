@@ -188,7 +188,7 @@ elif sys.argv[1] == 'dumpdata':
 
 	if model == 1:
 		max_segments = 4096
-		dev_write_idx = int.from_bytes(mem_read(s, 0xc020)[0:2], 'little') / 8
+		dev_write_idx = int(int.from_bytes(mem_read(s, 0xc020)[0:2], 'little') / 8)
 	else:
 		max_segments = 1064
 		dev_write_idx = int.from_bytes(mem_read(s, 0xe008)[0:2], 'little')
