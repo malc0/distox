@@ -195,7 +195,7 @@ elif sys.argv[1] == 'dumpdata':
 	to_read = max_segments if sys.argv[2] == 'all' else int(sys.argv[2])
 
 	progress = 0
-	print('Dumping ' + sys.argv[2] + ' measurements to \'' + sys.argv[3] + ('\' (don\'t let disto go to sleep!)...' if to_read > 150 and model == 1 else '\'...'))
+	print('Dumping ' + str(to_read) + ' most-recent records to \'' + sys.argv[3] + ('\' (don\'t let disto go to sleep!)...' if to_read > 150 and model == 1 else '\'...'))
 	with open(sys.argv[3], 'w') as df:
 		df.write('unread,type,dist,heading,clino,roll,x,y,z,cal_idx,rev,ACC,MAG,dip\n')
 
