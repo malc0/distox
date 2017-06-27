@@ -162,16 +162,20 @@ elif sys.argv[1] == 'loadcal':
 	with open(sys.argv[2], 'rb') as cf:
 		cal = cf.read()
 	
-	if cal[0:2] == b'0x':	# output from tlx_calib
+	if cal[0:2] == b'0x':
+		print('Interpreting file as tlx_calib output...')
 		if cal[246:248] == b'0x':	# tlx_calib-alike, but with non-linear coefficients...
 			cal = bytes([int(i, 16) for i in str(cal[0:260], 'utf-8').split()])
 		else:
 			cal = bytes([int(i, 16) for i in str(cal[0:244], 'utf-8').split()])
+	else:
+		sensible_cal_sizes = [ 48, 51, 52 ]
+		print('Interpreting file as raw binary calibration' + (', but ' + str(len(cal)) + ' byte size is unexpected...' if len(cal) not in sensible_cal_sizes else '...'))
 
 	cal = cal + b'\xff' * (-len(cal) % 4)	# pad with 0xff to 32 bit alignment
 	if len(cal) > 48:	# non-linear case
 		cal = cal[:52]	# guard against mad input
-		if cal[48:] == b'\xff\xff\xff\xff':	# actually, linear variant
+		if cal[48:51] == b'\xff\xff\xff':	# actually, linear variant
 			cal = cal[:48]	# save flash wear
 		elif model == 1 or fw_ver < 2003:
 			raise RuntimeError('Writing extended (non-linear) calibration to this DistoX will not work (firmware too old): calibration unchanged')
