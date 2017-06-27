@@ -84,7 +84,7 @@ def df_append(df, d, hot, ls_roll):
 		rev = 1 * bool(d[0] & 0x40)
 		absG = int.from_bytes(d[1:3], 'little')
 		absM = int.from_bytes(d[3:5], 'little')
-		dip = int.from_bytes(d[5:7], 'little', signed = True)
+		dip = int.from_bytes(d[5:7], 'little', signed = True) / 65536 * 360
 		df.write('{},VEC,,,,,,,,,{},{},{},{}\n'.format(hot, rev, absG, absM, dip))
 	else:
 		raise RuntimeError('Unknown packet type', typ)
